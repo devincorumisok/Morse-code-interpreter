@@ -6,141 +6,141 @@
     <title>Morse Code Interpreter</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
             background-color: #f0f0f0;
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             height: 100vh;
             margin: 0;
+            font-family: Arial, sans-serif;
         }
-        .interpreter {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 20px;
+
+        #message {
+            font-size: 1.2rem;
+            color: #333;
+            margin-top: 20px;
         }
-        .output {
-            font-size: 1.5rem;
-            white-space: pre-wrap; /* Preserve whitespace */
-            text-align: center; /* Center the output text */
+
+        #status {
+            margin-top: 10px;
+            color: #666;
         }
+
         button {
-            font-size: 1rem;
             padding: 10px 20px;
-            cursor: pointer;
-        }
-        .decoded-message {
-            font-size: 1.5rem;
-            margin-top: 20px; /* Space between button and decoded message */
-            color: #333; /* Text color */
+            font-size: 1rem;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div class="interpreter">
-        <h1>Morse Code Interpreter</h1>
-        <div class="output" id="output">Listening...</div>
-        <button id="clear-button">Clear</button>
-        <div class="decoded-message" id="decoded-message"></div> <!-- New div for decoded message -->
-    </div>
+    <h1>Morse Code Interpreter</h1>
+    <button id="start-btn">Start Listening</button>
+    <button id="stop-btn" disabled>Stop Listening</button>
+    <div id="message">Detected message: </div>
+    <div id="status">Status: Not listening</div>
 
     <script>
-        const outputDiv = document.getElementById('output');
-        const clearButton = document.getElementById('clear-button');
-        const decodedMessageDiv = document.getElementById('decoded-message');
-        const context = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = context.createAnalyser();
-        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const messageDiv = document.getElementById('message');
+        const statusDiv = document.getElementById('status');
+
+        let audioContext;
+        let analyser;
         let microphone;
-
-        const dotFrequency = 700; // Frequency for dot
-        const dashFrequency = 800; // Frequency for dash
-        const frequencyRange = 50; // Range for detecting frequencies (±50 Hz)
-        const threshold = 30; // Amplitude threshold to detect sound
-        const morseCodeTimeout = 700; // Timeout for decoding Morse code
-        let morseCode = ''; // To store the current Morse code sequence
-        let lastDetectedTime = Date.now(); // Last time a signal was detected
-
-        // Morse Code Dictionary
-        const morseToText = {
-            '.-': 'A', '-...': 'B', '-..': 'D', '.': 'E', '..-.': 'F', '--.': 'G',
-            '....': 'H', '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L', '--': 'M',
-            '-.': 'N', '---': 'O', '.--.': 'P', '--.-': 'Q', '.-.': 'R', '...': 'S',
-            '-': 'T', '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X', '-.--': 'Y',
-            '--..': 'Z', '-----': '0', '.----': '1', '..---': '2', '...--': '3',
-            '....-': '4', '.....': '5', '-....': '6', '--...': '7', '---..': '8',
-            '----.': '9', '/': ' ' // Space to separate words
+        let dataArray;
+        let morseCode = '';
+        let recording = false;
+        let startTime = null;
+        let isSounding = false;
+        const morseDictionary = {
+            '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E',
+            '..-.': 'F', '--.': 'G', '....': 'H', '..': 'I', '.---': 'J',
+            '-.-': 'K', '.-..': 'L', '--': 'M', '-.': 'N', '---': 'O',
+            '.--.': 'P', '--.-': 'Q', '.-.': 'R', '...': 'S', '-': 'T',
+            '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X', '-.--': 'Y',
+            '--..': 'Z', '-----': '0', '.----': '1', '..---': '2',
+            '...--': '3', '....-': '4', '.....': '5', '-....': '6',
+            '--...': '7', '---..': '8', '----.': '9'
         };
 
-        async function initMicrophone() {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            microphone = context.createMediaStreamSource(stream);
-            microphone.connect(analyser);
-            listen();
+        function translateMorseToText(morse) {
+            return morse.trim().split(' ').map(code => morseDictionary[code] || '').join('');
         }
 
-        function listen() {
-            analyser.fftSize = 2048; // Size of the FFT
-            requestAnimationFrame(analyseAudio);
+        function startListening() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            dataArray = new Uint8Array(analyser.fftSize);
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    microphone.connect(analyser);
+                    recording = true;
+                    statusDiv.textContent = 'Status: Listening...';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    processAudio();
+                })
+                .catch(error => {
+                    console.error('Error accessing microphone:', error);
+                    statusDiv.textContent = 'Status: Microphone access denied';
+                });
         }
 
-        function analyseAudio() {
-            analyser.getByteFrequencyData(frequencyData);
-            const dotAmplitude = getAmplitudeInRange(dotFrequency, frequencyRange);
-            const dashAmplitude = getAmplitudeInRange(dashFrequency, frequencyRange);
+        function stopListening() {
+            if (microphone) {
+                microphone.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            recording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusDiv.textContent = 'Status: Not listening';
+        }
+
+        function processAudio() {
+            if (!recording) return;
+
+            analyser.getByteTimeDomainData(dataArray);
+            const amplitude = Math.max(...dataArray) - Math.min(...dataArray);
             const currentTime = Date.now();
-            const timeSinceLastDetection = currentTime - lastDetectedTime;
 
-            if (dotAmplitude > threshold) {
-                morseCode += '.';
-                lastDetectedTime = currentTime;
-            } else if (dashAmplitude > threshold) {
-                morseCode += '-';
-                lastDetectedTime = currentTime;
-            } else if (timeSinceLastDetection > morseCodeTimeout && morseCode) {
-                decodeMorse();
+            if (amplitude > 50) {
+                if (!isSounding) {
+                    startTime = currentTime;
+                    isSounding = true;
+                }
+            } else {
+                if (isSounding) {
+                    const duration = currentTime - startTime;
+                    if (duration < 200) {
+                        morseCode += '.';
+                    } else {
+                        morseCode += '-';
+                    }
+                    isSounding = false;
+                    morseCode += ' ';
+                }
             }
 
-            requestAnimationFrame(analyseAudio);
-        }
-
-        function getAmplitudeInRange(targetFrequency, range) {
-            const nyquist = context.sampleRate / 2;
-            const startIndex = Math.round((targetFrequency - range) / nyquist * analyser.frequencyBinCount);
-            const endIndex = Math.round((targetFrequency + range) / nyquist * analyser.frequencyBinCount);
-            let amplitudeSum = 0;
-            let count = 0;
-
-            for (let i = startIndex; i <= endIndex; i++) {
-                amplitudeSum += frequencyData[i];
-                count++;
+            if (!isSounding && currentTime - startTime > 600 && morseCode.endsWith(' ')) {
+                morseCode = morseCode.trim();
+                const translatedText = translateMorseToText(morseCode);
+                messageDiv.textContent = 'Detected message: ' + translatedText;
+                morseCode = '';
             }
 
-            return (amplitudeSum / count); // No normalization to [0, 1]
+            requestAnimationFrame(processAudio);
         }
 
-        function decodeMorse() {
-            if (morseCode) {
-                const decodedChar = morseToText[morseCode] || '?'; // Decode or show '?' for unknown
-                decodedMessageDiv.textContent += decodedChar; // Add the decoded character
-                morseCode = ''; // Reset the Morse code sequence
-            }
-        }
-
-        // Clear the output
-        clearButton.addEventListener('click', () => {
-            outputDiv.textContent = 'Listening...'; // Reset listening output
-            decodedMessageDiv.textContent = ''; // Clear the decoded message
-            morseCode = ''; // Reset the Morse code sequence
-        });
-
-        // Start the microphone
-        initMicrophone().catch(err => {
-            console.error('Error accessing microphone:', err);
-            outputDiv.textContent = 'Microphone access denied.';
-        });
+        startBtn.addEventListener('click', startListening);
+        stopBtn.addEventListener('click', stopListening);
     </script>
 </body>
-</html>
