@@ -49,7 +49,7 @@
     <script>
         const outputDiv = document.getElementById('output');
         const clearButton = document.getElementById('clear-button');
-        const decodedMessageDiv = document.getElementById('decoded-message'); // New element for decoded messages
+        const decodedMessageDiv = document.getElementById('decoded-message');
         const context = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = context.createAnalyser();
         const frequencyData = new Uint8Array(analyser.frequencyBinCount);
@@ -58,8 +58,8 @@
         const dotFrequency = 700; // Frequency for dot
         const dashFrequency = 800; // Frequency for dash
         const frequencyRange = 50; // Range for detecting frequencies (±50 Hz)
-        const threshold = 15; // Amplitude threshold to detect sound
-        const morseCodeTimeout = 500; // Timeout for decoding Morse code
+        const threshold = 30; // Amplitude threshold to detect sound
+        const morseCodeTimeout = 700; // Timeout for decoding Morse code
         let morseCode = ''; // To store the current Morse code sequence
         let lastDetectedTime = Date.now(); // Last time a signal was detected
 
@@ -88,11 +88,8 @@
 
         function analyseAudio() {
             analyser.getByteFrequencyData(frequencyData);
-
-            // Calculate the average amplitude in the target frequency ranges
             const dotAmplitude = getAmplitudeInRange(dotFrequency, frequencyRange);
             const dashAmplitude = getAmplitudeInRange(dashFrequency, frequencyRange);
-
             const currentTime = Date.now();
             const timeSinceLastDetection = currentTime - lastDetectedTime;
 
