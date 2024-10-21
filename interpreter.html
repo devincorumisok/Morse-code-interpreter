@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Morse Code Interpreter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .interpreter {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .output {
+            font-size: 1.5rem;
+            white-space: pre-wrap; /* Preserve whitespace */
+            text-align: center; /* Center the output text */
+        }
+        button {
+            font-size: 1rem;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        .decoded-message {
+            font-size: 1.5rem;
+            margin-top: 20px; /* Space between button and decoded message */
+            color: #333; /* Text color */
+        }
+    </style>
+</head>
+<body>
+    <div class="interpreter">
+        <h1>Morse Code Interpreter</h1>
+        <div class="output" id="output">Listening...</div>
+        <button id="clear-button">Clear</button>
+        <div class="decoded-message" id="decoded-message"></div> <!-- New div for decoded message -->
+    </div>
+
+    <script>
+        const outputDiv = document.getElementById('output');
+        const clearButton = document.getElementById('clear-button');
+        const decodedMessageDiv = document.getElementById('decoded-message'); // New element for decoded messages
+        const context = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = context.createAnalyser();
+        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        let microphone;
+
+        const dotFrequency = 700; // Frequency for dot
+        const dashFrequency = 800; // Frequency for dash
+        const frequencyRange = 50; // Range for detecting frequencies (±50 Hz)
+        const threshold = 15; // Amplitude threshold to detect sound
+        const morseCodeTimeout = 500; // Timeout for decoding Morse code
+        let morseCode = ''; // To store the current Morse code sequence
+        let lastDetectedTime = Date.now(); // Last time a signal was detected
+
+        // Morse Code Dictionary
+        const morseToText = {
+            '.-': 'A', '-...': 'B', '-..': 'D', '.': 'E', '..-.': 'F', '--.': 'G',
+            '....': 'H', '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L', '--': 'M',
+            '-.': 'N', '---': 'O', '.--.': 'P', '--.-': 'Q', '.-.': 'R', '...': 'S',
+            '-': 'T', '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X', '-.--': 'Y',
+            '--..': 'Z', '-----': '0', '.----': '1', '..---': '2', '...--': '3',
+            '....-': '4', '.....': '5', '-....': '6', '--...': '7', '---..': '8',
+            '----.': '9', '/': ' ' // Space to separate words
+        };
+
+        async function initMicrophone() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            microphone = context.createMediaStreamSource(stream);
+            microphone.connect(analyser);
+            listen();
+        }
+
+        function listen() {
+            analyser.fftSize = 2048; // Size of the FFT
+            requestAnimationFrame(analyseAudio);
+        }
+
+        function analyseAudio() {
+            analyser.getByteFrequencyData(frequencyData);
+
+            // Calculate the average amplitude in the target frequency ranges
+            const dotAmplitude = getAmplitudeInRange(dotFrequency, frequencyRange);
+            const dashAmplitude = getAmplitudeInRange(dashFrequency, frequencyRange);
+
+            const currentTime = Date.now();
+            const timeSinceLastDetection = currentTime - lastDetectedTime;
+
+            if (dotAmplitude > threshold) {
+                morseCode += '.';
+                lastDetectedTime = currentTime;
+            } else if (dashAmplitude > threshold) {
+                morseCode += '-';
+                lastDetectedTime = currentTime;
+            } else if (timeSinceLastDetection > morseCodeTimeout && morseCode) {
+                decodeMorse();
+            }
+
+            requestAnimationFrame(analyseAudio);
+        }
+
+        function getAmplitudeInRange(targetFrequency, range) {
+            const nyquist = context.sampleRate / 2;
+            const startIndex = Math.round((targetFrequency - range) / nyquist * analyser.frequencyBinCount);
+            const endIndex = Math.round((targetFrequency + range) / nyquist * analyser.frequencyBinCount);
+            let amplitudeSum = 0;
+            let count = 0;
+
+            for (let i = startIndex; i <= endIndex; i++) {
+                amplitudeSum += frequencyData[i];
+                count++;
+            }
+
+            return (amplitudeSum / count); // No normalization to [0, 1]
+        }
+
+        function decodeMorse() {
+            if (morseCode) {
+                const decodedChar = morseToText[morseCode] || '?'; // Decode or show '?' for unknown
+                decodedMessageDiv.textContent += decodedChar; // Add the decoded character
+                morseCode = ''; // Reset the Morse code sequence
+            }
+        }
+
+        // Clear the output
+        clearButton.addEventListener('click', () => {
+            outputDiv.textContent = 'Listening...'; // Reset listening output
+            decodedMessageDiv.textContent = ''; // Clear the decoded message
+            morseCode = ''; // Reset the Morse code sequence
+        });
+
+        // Start the microphone
+        initMicrophone().catch(err => {
+            console.error('Error accessing microphone:', err);
+            outputDiv.textContent = 'Microphone access denied.';
+        });
+    </script>
+</body>
+</html>
